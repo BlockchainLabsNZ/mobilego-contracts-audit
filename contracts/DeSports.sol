@@ -1,4 +1,4 @@
-pragma solidity ^0.4.17;
+pragma solidity ^0.4.15;
 
 /*
 --------------------------------------------------------------------------------
@@ -351,7 +351,7 @@ contract DeSports is KillSwitch, PreciseMath {
                 msg.sender == mgoAddress);
         balances[_from] += _value;
         EthereumDeposit(_from, _value);
-        // _data; // ugly warning fix
+        _data; // ugly warning fix
     }
 
     /* Use your funds on the platform to bet that an event will occur. */

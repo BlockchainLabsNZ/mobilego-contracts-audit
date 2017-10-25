@@ -1,0 +1,8 @@
+/node_modules
+/build
+/.DS_Store
+.DS_Store/
+/coverage
+coverage.json
+allFiredEvents
+scripts/node_modules
