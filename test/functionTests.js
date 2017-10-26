@@ -17,8 +17,9 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
   beforeEach(async function () {
     DeSports = await DeSportsArtifact.new();
     // Send 9000 tokens to providers for testing
-    await DeSports.wavesTokenFallback(provider, 9001);
-    await DeSports.wavesTokenFallback(existing_provider, 9001);
+    await DeSports.wavesTokenFallback(provider, 1000);
+    await DeSports.wavesTokenFallback(existing_provider, 1000);
+    await DeSports.wavesTokenFallback(better, 100);
   });
 
   it('changeWithdrawalFee only works for owner', async function () {
@@ -114,7 +115,7 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
     it('setQuota should be lockable', async function () {
       await assertFail(async () => { await DeSports.setQuota(existing_union, 0, 10000000001, { from: existing_provider }) }, "Function should not be callable while locked");
       await DeSports.changeContractStatus(false);
-      const { logs } = await DeSports.setQuota(existing_union, 0, 10000000001, { from: existing_provider });
+      const { logs } = await DeSports.setQuota(existing_union, 0, new BigNumber("10000000001"), { from: existing_provider });
       const event = logs.find(e => e.event === 'Quota');
       expect(event).to.exist;
     });
@@ -149,6 +150,19 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
         await DeSports.changeContractStatus(false);
         const { logs } = await DeSports.associateAddresses(0x1, 0x2, { from: existing_provider });
         const event = logs.find(e => e.event === 'AddressesAssociation');
+        expect(event).to.exist;
+      });
+
+      it('bet should be lockable', async function () {
+        // Unlock the contract to start betting or else bet will always fail
+        await DeSports.changeContractStatus(false);
+        await DeSports.startBetting(existing_union, { from: existing_provider });
+        await DeSports.setQuota(existing_union, 0, new BigNumber("10000000001"), { from: existing_provider });
+        await DeSports.changeContractStatus(true);
+        await assertFail(async () => { await DeSports.bet(existing_union, 0, 10, new BigNumber("10000000001"), { from: better }) }, "Function should not be callable while locked");
+        await DeSports.changeContractStatus(false);
+        const { logs } = await DeSports.bet(existing_union, 0, 10, new BigNumber("10000000001"), { from: better });
+        const event = logs.find(e => e.event === 'Bet');
         expect(event).to.exist;
       });
     });
