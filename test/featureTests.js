@@ -47,4 +47,13 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
     let reputation_increment = await DeSports.providers(provider);
     assert.equal(reputation_increment[1].toNumber(), 1000000000);
   });
+
+  it('as a user I should be able to claim bet after being resolved', async function () {
+    await DeSports.createUnion(0x0, { from: provider });
+    await DeSports.createEvent(0x01, 0x0, { from: provider });  
+    await DeSports.setQuota(0x0, 0, 10000000001, { from: provider });
+    await DeSports.startBetting(0x0, { from: provider }); 
+    await DeSports.resolveUnion(0x0, 0, { from: provider });
+    await DeSports.claimBet(0x0, 0, { from: better });
+  });
 });
