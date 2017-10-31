@@ -49,11 +49,15 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
   });
 
   it('as a user I should be able to claim bet after being resolved', async function () {
+    assert.equal((await DeSports.balances(better)).toNumber(), 10000000000);
     await DeSports.createUnion(0x0, { from: provider });
+    await DeSports.fundUnion(0x0, 12300000000, { from: provider });
     await DeSports.createEvent(0x01, 0x0, { from: provider });  
-    await DeSports.setQuota(0x0, 0, 10000000001, { from: provider });
+    await DeSports.setQuota(0x0, 0, 20000000000, { from: provider });
     await DeSports.startBetting(0x0, { from: provider }); 
+    const { logs } = await DeSports.bet(0x0, 0, 10000000000, new BigNumber("20000000000"), { from: better });
     await DeSports.resolveUnion(0x0, 0, { from: provider });
-    await DeSports.claimBet(0x0, 0, { from: better });
+    await DeSports.claimBet(0x0, 0, { from: better }); 
+    assert.equal((await DeSports.balances(better)).toNumber(), 20000000000);
   });
 });
