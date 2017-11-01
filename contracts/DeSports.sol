@@ -1,4 +1,4 @@
-pragma solidity ^0.4.15;
+pragma solidity ^0.4.17;
 
 /*
 --------------------------------------------------------------------------------
@@ -27,8 +27,8 @@ contract PreciseMath {
     uint8 constant public decimalPrecision = 10;
 
     /* Auxiliary variable to avoid recomputation */
-    uint constant public precision = 10000000000; // = 1.0000000000 (precise format)
-                      // precision = 10 ** decimalPrecision;
+    uint constant public precision = 10000000000;               // = 1.0000000000 (precise format)
+                      // precision = 10 ** decimalPrecision;    // = 1.0000000000 (precise format)
 
     /* Replacement for / (division) */
     function preciselyDivide(uint numerator, uint denominator) internal constant returns (uint preciseQuotient) {
@@ -127,8 +127,6 @@ contract DeSports is KillSwitch, PreciseMath {
         uint preciseQuota;
         /* The amount of MGO to be paid if the event occurs. */
         uint totalClaim;
-        /* The amount of MGO betted on the event. */
-        uint totalDeposit;
     }
 
     struct union {
@@ -136,8 +134,9 @@ contract DeSports is KillSwitch, PreciseMath {
         /* The pools of MGO that back the bets. */
         uint providerFund;
         uint depositFund;
-        /* The amount of MGO betted on all events. */
-        uint totalDeposit;
+        /* The same pools that are not subtracted from during betting. */
+        uint originalProviderFund;
+        uint originalDepositFund;
         /* The possible states of the union. */
         bool bettingStarted;
         bool bettingLocked;
@@ -247,6 +246,7 @@ contract DeSports is KillSwitch, PreciseMath {
     function fundUnion(bytes32 unionName, uint amount) external lockable only(unions[unionName].provider) returns (bool success) {
         if (balances[msg.sender] >= amount) {
             unions[unionName].providerFund += amount;
+            unions[unionName].originalProviderFund += amount;
             balances[msg.sender] -= amount;
             UnionFunding(unionName, amount);
             return true;
@@ -321,8 +321,10 @@ contract DeSports is KillSwitch, PreciseMath {
     function resolveUnion(bytes32 unionName, uint8 result) external lockable only(unions[unionName].provider) returns (bool success) {
         if (!unions[unionName].resolved     &&
             result < unions[unionName].eventCount) {
-            providers[msg.sender].reputation += unions[unionName].totalDeposit;
-            balances[msg.sender] += unions[unionName].totalDeposit + unions[unionName].providerFund;
+            providers[msg.sender].reputation += unions[unionName].originalDepositFund;
+            balances[msg.sender] += unions[unionName].originalDepositFund + unions[unionName].originalProviderFund
+                                    - unions[unionName].events[result].totalClaim;
+            unions[unionName].result = result;
             unions[unionName].resolved = true;
             UnionResolution(unionName, result);
             return true;
@@ -351,7 +353,7 @@ contract DeSports is KillSwitch, PreciseMath {
                 msg.sender == mgoAddress);
         balances[_from] += _value;
         EthereumDeposit(_from, _value);
-        _data; // ugly warning fix
+        // _data; // ugly warning fix
     }
 
     /* Use your funds on the platform to bet that an event will occur. */
@@ -365,21 +367,20 @@ contract DeSports is KillSwitch, PreciseMath {
             amount > 0                          &&
             /* Security against a quota change transaction being confirmed before this one. */
             preciseQuota == unions[unionName].events[eventIndex].preciseQuota) {
+            unions[unionName].depositFund += amount;
             /* Secure that the bet is backed by a fund. Efficient implementation. */
-            if (preciselyMultiply(amount, preciseQuota) >= unions[unionName].providerFund) {
+            if (preciselyMultiply(amount, preciseQuota) <= unions[unionName].providerFund) {
                 unions[unionName].providerFund -= preciselyMultiply(amount, preciseQuota);
-            } else if (preciselyMultiply(amount, preciseQuota) >= unions[unionName].depositFund) {
+            } else if (preciselyMultiply(amount, preciseQuota) <= unions[unionName].depositFund) {
                 unions[unionName].depositFund -= preciselyMultiply(amount, preciseQuota);
-            } else if (preciselyMultiply(amount, preciseQuota) >= unions[unionName].depositFund + unions[unionName].providerFund) {
+            } else if (preciselyMultiply(amount, preciseQuota) <= unions[unionName].depositFund + unions[unionName].providerFund) {
                 unions[unionName].depositFund -= preciselyMultiply(amount, preciseQuota) - unions[unionName].providerFund;
                 unions[unionName].providerFund = 0;
             } else {
                 revert();
             }
-            unions[unionName].events[eventIndex].totalDeposit += amount;
             balances[msg.sender] -= amount;
-            unions[unionName].totalDeposit += amount;
-            unions[unionName].depositFund += amount;
+            unions[unionName].originalDepositFund += amount;
             /* Update user's claims & investments. */
             actions[msg.sender][unionName][eventIndex] += preciselyMultiply(amount, preciseQuota);
             /* Record user's history. */
@@ -395,17 +396,17 @@ contract DeSports is KillSwitch, PreciseMath {
     }
 
     /* Claim the money from a bet. */
-    event BetClaim(bytes32 unionName, uint8 eventIndex, uint amount, address claimer);
-    function claimBet(bytes32 unionName, uint8 eventIndex) external returns (bool success) {
+    event BetClaim(bytes32 unionName, uint amount, address claimer);
+    function claimBet(bytes32 unionName) external returns (bool success) {
         if (unions[unionName].resolved  &&
             actions[msg.sender][unionName][unions[unionName].result] > 0) {
             balances[msg.sender] += actions[msg.sender][unionName][unions[unionName].result];
-            balances[msg.sender] -= preciselyMultiply(actions[msg.sender][unionName][eventIndex],
+            balances[msg.sender] -= preciselyMultiply(actions[msg.sender][unionName][unions[unionName].result],
                                     providers[unions[unionName].provider].preciseFee);
-            balances[unions[unionName].provider] += preciselyMultiply(actions[msg.sender][unionName][eventIndex],
+            balances[unions[unionName].provider] += preciselyMultiply(actions[msg.sender][unionName][unions[unionName].result],
                                                     providers[unions[unionName].provider].preciseFee);
-            BetClaim(unionName, eventIndex, actions[msg.sender][unionName][eventIndex], msg.sender);
-            actions[msg.sender][unionName][eventIndex] = 0;
+            BetClaim(unionName, actions[msg.sender][unionName][eventIndex], msg.sender);
+            actions[msg.sender][unionName][unions[unionName].result] = 0;
             return true;
         } else {
             return false;
@@ -434,7 +435,7 @@ contract DeSports is KillSwitch, PreciseMath {
     /* Fetch the result of a mapping inside a struct (not provided by default). */
     function events(bytes32 unionName, uint8 eventIndex) external constant returns (bytes32, uint, uint, uint) {
         return (unions[unionName].events[eventIndex].name, unions[unionName].events[eventIndex].preciseQuota,
-                unions[unionName].events[eventIndex].totalClaim, unions[unionName].events[eventIndex].totalDeposit);
+                unions[unionName].events[eventIndex].totalClaim);
     }
 
     /* Prevents the (accidental) sending of ether to this contract. */
