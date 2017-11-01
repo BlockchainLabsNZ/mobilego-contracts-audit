@@ -9,17 +9,31 @@ require('chai')
   .should()
 const expect = require('chai').expect
 
-contract('Function Tests', async function ([owner, better, provider, existing_provider, vandal]) {
+contract('Function Tests', async function ([owner, better, better2, provider, existing_provider, vandal]) {
   let DeSports;
   const test_union = web3.fromAscii("Test Union");
   const test_event = web3.fromAscii("Test Event");
 
   beforeEach(async function () {
     DeSports = await DeSportsArtifact.new();
-    // Send 9000 tokens to providers for testing
+    // Send tokens for testing
     await DeSports.wavesTokenFallback(provider, 1000);
     await DeSports.wavesTokenFallback(existing_provider, 1000);
     await DeSports.wavesTokenFallback(better, 100);
+    await DeSports.wavesTokenFallback(better2, 100);
+  });
+
+  it('fallback function should revert', async function () {
+    await assertFail(async () => { await DeSports.sendTransaction({ from: vandal }) });
+  });
+
+  it('setIP_Port should save ip_port', async function () {
+    let ip_port = web3.fromAscii("192.168.0.1:80");
+    let { logs } = await DeSports.setIP_Port(0, ip_port);
+    const event = logs.find(e => e.event === 'IP_Port');
+    expect(event).to.exist;
+    assert.equal(event['args']['provider'], owner);
+    assert.include(event['args']['ip_port'], ip_port);
   });
 
   it('changeWithdrawalFee only works for owner', async function () {
@@ -67,9 +81,24 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
 
     describe('test betting', async function () {
       beforeEach(async function () {
-        await DeSports.setQuota(existing_union, 0, new BigNumber("20000000000"), { from: existing_provider });
-        await DeSports.fundUnion(existing_union, 1000, { from: existing_provider });
+        await DeSports.setQuotas(existing_union, [new BigNumber("20000000000"), new BigNumber("20000000000")], { from: existing_provider });
+        await DeSports.fundUnion(existing_union, 1, { from: existing_provider });
         await DeSports.startBetting(existing_union, { from: existing_provider });
+      });
+
+      it('bet is not valid if it is less than the amount the union has been funded', async function () {
+        await DeSports.fundUnion(existing_union, 10, { from: existing_provider });
+        let { logs } = await DeSports.bet(existing_union, 0, 1, new BigNumber("20000000000"), { from: better });
+        let event = logs.find(e => e.event === 'Bet');
+        expect(event).to.not.exist;
+      });
+
+      it('events() function should return event info', async function () {
+        let events = await DeSports.events(existing_union, 0);
+        assert.include(events[0], existing_event, "the event name should contain the text from existing_event padded with 0's");
+        assert.equal(events[1].toNumber(), 20000000000);
+        assert.equal(events[2].toNumber(), 0);
+        assert.equal(events[3].toNumber(), 0);
       });
 
       it('betting shouldnt be valid after a union is resolved', async function () {
@@ -92,22 +121,36 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
         expect(event).to.not.exist;
       });
 
-      // it('only the person who placed the bet, can claim the bet', async function () {
-      // });
+      it('only the person who placed the bet, can claim the bet', async function () {
+        await DeSports.bet(existing_union, 0, 10, new BigNumber("20000000000"), { from: better });
+        await DeSports.resolveUnion(existing_union, 0, { from: existing_provider });
+        let { logs } = await DeSports.claimBet(existing_union, 0, { from: vandal });
+        let event = logs.find(e => e.event === 'BetClaim');
+        expect(event).to.not.exist;
+      });
 
       it('a bet should return nothing after an unsuccesful bet', async function () {
         await DeSports.bet(existing_union, 0, 10, new BigNumber("20000000000"), { from: better });
         await DeSports.resolveUnion(existing_union, 1, { from: existing_provider });
         let { logs } = await DeSports.claimBet(existing_union, 0, { from: better });
         let event = logs.find(e => e.event === 'BetClaim');
-        expect(event).to.exist;
-        assert.equal(event['args']['amount'].toNumber(), 0);
+        expect(event).to.not.exist;
       });
 
       it('a bet should return a predictable amount after a success', async function () {
         await DeSports.bet(existing_union, 0, 10, new BigNumber("20000000000"), { from: better });
         await DeSports.resolveUnion(existing_union, 0, { from: existing_provider });
         let { logs } = await DeSports.claimBet(existing_union, 0, { from: better });
+        let event = logs.find(e => e.event === 'BetClaim');
+        expect(event).to.exist;
+        assert.equal(event['args']['amount'].toNumber(), 20);
+      });
+
+      it('a bet should return a predictable amount after a success (bet on event 2)', async function () {
+        await DeSports.bet(existing_union, 0, 10, new BigNumber("20000000000"), { from: better });
+        await DeSports.bet(existing_union, 1, 10, new BigNumber("20000000000"), { from: better2 });
+        await DeSports.resolveUnion(existing_union, 1, { from: existing_provider });
+        let { logs } =  await DeSports.claimBet(existing_union, 1, { from: better2 });
         let event = logs.find(e => e.event === 'BetClaim');
         expect(event).to.exist;
         assert.equal(event['args']['amount'].toNumber(), 20);
