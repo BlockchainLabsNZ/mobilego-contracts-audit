@@ -405,7 +405,7 @@ contract DeSports is KillSwitch, PreciseMath {
                                     providers[unions[unionName].provider].preciseFee);
             balances[unions[unionName].provider] += preciselyMultiply(actions[msg.sender][unionName][unions[unionName].result],
                                                     providers[unions[unionName].provider].preciseFee);
-            BetClaim(unionName, actions[msg.sender][unionName][eventIndex], msg.sender);
+            BetClaim(unionName, actions[msg.sender][unionName][unions[unionName].result], msg.sender);
             actions[msg.sender][unionName][unions[unionName].result] = 0;
             return true;
         } else {
@@ -433,7 +433,7 @@ contract DeSports is KillSwitch, PreciseMath {
     /** Other functions. **/
 
     /* Fetch the result of a mapping inside a struct (not provided by default). */
-    function events(bytes32 unionName, uint8 eventIndex) external constant returns (bytes32, uint, uint, uint) {
+    function events(bytes32 unionName, uint8 eventIndex) external constant returns (bytes32, uint, uint) {
         return (unions[unionName].events[eventIndex].name, unions[unionName].events[eventIndex].preciseQuota,
                 unions[unionName].events[eventIndex].totalClaim);
     }
