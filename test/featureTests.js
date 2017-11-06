@@ -9,7 +9,7 @@ require('chai')
   .should()
 const expect = require('chai').expect
 
-contract('Function Tests', async function ([owner, better, provider, existing_provider, vandal]) {
+contract('Feature Tests', async function ([owner, better, provider, existing_provider, vandal]) {
   let DeSports;
   const test_union = web3.fromAscii("Test Union");
   const test_event = web3.fromAscii("Test Event");
@@ -22,14 +22,14 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
     await DeSports.wavesTokenFallback(better, 10000000000);
   });
 
-// END TO END TESTS 
+// END TO END TESTS
 
   it('as a provider I should be able to create events that users can bet on', async function () {
     await DeSports.createUnion(0x0, { from: provider });
     await DeSports.fundUnion(0x0, 12300000000, { from: provider });
-    await DeSports.createEvent(0x01, 0x0, { from: provider });  
+    await DeSports.createEvent(0x01, 0x0, { from: provider });
     await DeSports.setQuota(0x0, 0, 10000000001, { from: provider });
-    await DeSports.startBetting(0x0, { from: provider }); 
+    await DeSports.startBetting(0x0, { from: provider });
     const { logs } = await DeSports.bet(0x0, 0, 1000000000, new BigNumber("10000000001"), { from: better });
     const event = logs.find(e => e.event === 'Bet');
     expect(event).to.exist;
@@ -38,9 +38,9 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
   it('as a provider I should be able to build a reputation', async function () {
     await DeSports.createUnion(0x0, { from: provider });
     await DeSports.fundUnion(0x0, 12300000000, { from: provider });
-    await DeSports.createEvent(0x01, 0x0, { from: provider });  
+    await DeSports.createEvent(0x01, 0x0, { from: provider });
     await DeSports.setQuota(0x0, 0, 10000000001, { from: provider });
-    await DeSports.startBetting(0x0, { from: provider }); 
+    await DeSports.startBetting(0x0, { from: provider });
     const { logs } = await DeSports.bet(0x0, 0, 1000000000, new BigNumber("10000000001"), { from: better });
     const event = logs.find(e => e.event === 'Bet');
     await DeSports.resolveUnion(0x0, 0, { from: provider });
@@ -52,12 +52,12 @@ contract('Function Tests', async function ([owner, better, provider, existing_pr
     assert.equal((await DeSports.balances(better)).toNumber(), 10000000000);
     await DeSports.createUnion(0x0, { from: provider });
     await DeSports.fundUnion(0x0, 12300000000, { from: provider });
-    await DeSports.createEvent(0x01, 0x0, { from: provider });  
+    await DeSports.createEvent(0x01, 0x0, { from: provider });
     await DeSports.setQuota(0x0, 0, 20000000000, { from: provider });
-    await DeSports.startBetting(0x0, { from: provider }); 
+    await DeSports.startBetting(0x0, { from: provider });
     const { logs } = await DeSports.bet(0x0, 0, 10000000000, new BigNumber("20000000000"), { from: better });
     await DeSports.resolveUnion(0x0, 0, { from: provider });
-    await DeSports.claimBet(0x0, 0, { from: better }); 
+    await DeSports.claimBet(0x0, { from: better });
     assert.equal((await DeSports.balances(better)).toNumber(), 20000000000);
   });
 });
