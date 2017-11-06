@@ -27,6 +27,14 @@ contract('Function Tests', async function ([owner, better, better2, provider, ex
     await assertFail(async () => { await DeSports.sendTransaction({ from: vandal }) });
   });
 
+  it('confirmWithdrawal should be possible', async function () {
+    await DeSports.associateAddresses(0x1, 0x2, { from: better });
+    await DeSports.requestWithdrawal(1, false, { from: better });
+    let { logs } = await DeSports.confirmWithdrawal(better, { from: owner });
+    const event = logs.find(e => e.event === 'WithdrawalConfirmation');
+    expect(event).to.exist;
+  });
+
   it('setIP_Port should save ip_port', async function () {
     let ip_port = web3.fromAscii("192.168.0.1:80");
     let { logs } = await DeSports.setIP_Port(0, ip_port);
