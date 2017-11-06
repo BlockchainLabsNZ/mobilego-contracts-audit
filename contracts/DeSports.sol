@@ -293,13 +293,17 @@ contract DeSports is KillSwitch, PreciseMath {
         }
     }
 
-    /* The provider sets the quotas for all events in a union. May be preferred to previous function because of atomicity. */
+    /* The provider sets the quotas for all events in a union. May be preferred to the previous function because of atomicity. */
     event Quotas(bytes32 unionName);
     function setQuotas(bytes32 unionName, uint[] preciseQuotas) external lockable only(unions[unionName].provider) returns (bool success) {
         if (!unions[unionName].resolved     &&
             preciseQuotas.length == unions[unionName].eventCount) {
             for (uint8 i = 0; i < preciseQuotas.length; i++) {
-                unions[unionName].events[i].preciseQuota = preciseQuotas[i];
+                if (preciseQuotas[i] > precision) {     // preciseQuotas[i] > 1.0000000000 (precise format)
+                    unions[unionName].events[i].preciseQuota = preciseQuotas[i];
+                } else {
+                    revert();
+                }
             }
             Quotas(unionName);
             return true;
