@@ -42,7 +42,7 @@ The audit report is focused on the following key areas - though this is not an e
 ### Minor
 - **The `bet` function could use a variable to make it more readible** -  `preciselyMultiply(amount, preciseQuota);` is used multiple times in the `bet` function, it could aliased to something like `expectedReturn` to make the function easier to follow
   - [ ] *Not fixed*
-- **Functions should throw an error instead of returning false ** -  Functions should use `revert()` instead of return false to signal that the function can not complete. A big advantage of this tactic is that most wallet software will give you a warning that the transaction will not go through before you make the transaction.
+- **Functions should throw an error instead of returning false** -  Functions should use `revert()` instead of return false to signal that the function can not complete. A big advantage of this tactic is that most wallet software will give you a warning that the transaction will not go through before you make the transaction.
   - [ ] *Not fixed*
 - **Refactor in `claimBet` function readability** -
 ```
