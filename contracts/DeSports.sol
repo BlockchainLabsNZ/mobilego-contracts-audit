@@ -131,12 +131,10 @@ contract DeSports is KillSwitch, PreciseMath {
 
     struct union {
         address provider;
-        /* The pools of MGO that back the bets. */
-        uint providerFund;
-        uint depositFund;
-        /* The same pools that are not subtracted from during betting. */
-        uint originalProviderFund;
-        uint originalDepositFund;
+        /* The of MGO that back the bets. Equal to depositPool + provider fund . */
+        uint insurancePool;
+        /* The pool of money from the bets themselves. */
+        uint depositPool;
         /* The possible states of the union. */
         bool bettingStarted;
         bool bettingLocked;
@@ -156,6 +154,8 @@ contract DeSports is KillSwitch, PreciseMath {
     /* Betting-related variables. */
     mapping(address => _provider) public providers;
     mapping(bytes32 => union) public unions;
+    // union ID => maximum potential payout that needs to be backed
+    mapping(bytes32 => uint) public maximumClaim;
     mapping(address => mapping(uint => historyLog)) public bettingHistory;
     mapping(address => uint) public betCount;
     mapping(address => mapping(bytes32 => mapping(uint8 => uint))) public actions;
@@ -225,7 +225,7 @@ contract DeSports is KillSwitch, PreciseMath {
             Fee(msg.sender, preciseNewFee);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -237,7 +237,7 @@ contract DeSports is KillSwitch, PreciseMath {
             UnionCreation(unionName, msg.sender);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -245,13 +245,12 @@ contract DeSports is KillSwitch, PreciseMath {
     event UnionFunding(bytes32 unionName, uint amount);
     function fundUnion(bytes32 unionName, uint amount) external lockable only(unions[unionName].provider) returns (bool success) {
         if (balances[msg.sender] >= amount) {
-            unions[unionName].providerFund += amount;
-            unions[unionName].originalProviderFund += amount;
+            unions[unionName].insurancePool += amount;
             balances[msg.sender] -= amount;
             UnionFunding(unionName, amount);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -264,7 +263,7 @@ contract DeSports is KillSwitch, PreciseMath {
             EventCreation(eventName, unionName, msg.sender);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -276,7 +275,7 @@ contract DeSports is KillSwitch, PreciseMath {
             BettingStarted(unionName);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -289,7 +288,7 @@ contract DeSports is KillSwitch, PreciseMath {
             Quota(unionName, eventIndex, preciseQuota);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -308,7 +307,7 @@ contract DeSports is KillSwitch, PreciseMath {
             Quotas(unionName);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -325,15 +324,14 @@ contract DeSports is KillSwitch, PreciseMath {
     function resolveUnion(bytes32 unionName, uint8 result) external lockable only(unions[unionName].provider) returns (bool success) {
         if (!unions[unionName].resolved     &&
             result < unions[unionName].eventCount) {
-            providers[msg.sender].reputation += unions[unionName].originalDepositFund;
-            balances[msg.sender] += unions[unionName].originalDepositFund + unions[unionName].originalProviderFund
-                                    - unions[unionName].events[result].totalClaim;
+            providers[msg.sender].reputation += unions[unionName].depositPool;
+            balances[msg.sender] += unions[unionName].insurancePool - unions[unionName].events[result].totalClaim;
             unions[unionName].result = result;
             unions[unionName].resolved = true;
             UnionResolution(unionName, result);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -371,31 +369,27 @@ contract DeSports is KillSwitch, PreciseMath {
             amount > 0                          &&
             /* Security against a quota change transaction being confirmed before this one. */
             preciseQuota == unions[unionName].events[eventIndex].preciseQuota) {
-            unions[unionName].depositFund += amount;
-            /* Secure that the bet is backed by a fund. Efficient implementation. */
-            if (preciselyMultiply(amount, preciseQuota) <= unions[unionName].providerFund) {
-                unions[unionName].providerFund -= preciselyMultiply(amount, preciseQuota);
-            } else if (preciselyMultiply(amount, preciseQuota) <= unions[unionName].depositFund) {
-                unions[unionName].depositFund -= preciselyMultiply(amount, preciseQuota);
-            } else if (preciselyMultiply(amount, preciseQuota) <= unions[unionName].depositFund + unions[unionName].providerFund) {
-                unions[unionName].depositFund -= preciselyMultiply(amount, preciseQuota) - unions[unionName].providerFund;
-                unions[unionName].providerFund = 0;
-            } else {
-                revert();
+            uint expectedReturn = preciselyMultiply(amount, preciseQuota);
+            unions[unionName].events[eventIndex].totalClaim += expectedReturn;
+            unions[unionName].insurancePool += amount;
+            /* Secures that the bet is backed by the pool. */
+            if (unions[unionName].events[eventIndex].totalClaim > maximumClaim[unionName]) {
+                maximumClaim[unionName] = unions[unionName].events[eventIndex].totalClaim;
+                if (maximumClaim[unionName] > unions[unionName].insurancePool) {
+                    revert();
+                }
             }
+            unions[unionName].depositPool += amount;
             balances[msg.sender] -= amount;
-            unions[unionName].originalDepositFund += amount;
             /* Update user's claims & investments. */
-            actions[msg.sender][unionName][eventIndex] += preciselyMultiply(amount, preciseQuota);
+            actions[msg.sender][unionName][eventIndex] += expectedReturn;
             /* Record user's history. */
-            bettingHistory[msg.sender][betCount[msg.sender]] = historyLog(unionName, eventIndex, preciselyMultiply(amount, preciseQuota), preciseQuota);
+            bettingHistory[msg.sender][betCount[msg.sender]] = historyLog(unionName, eventIndex, expectedReturn, preciseQuota);
             betCount[msg.sender]++;
-            /* Update the event pool's claims & investments. */
-            unions[unionName].events[eventIndex].totalClaim += preciselyMultiply(amount, preciseQuota);
-            Bet(unionName, eventIndex, preciselyMultiply(amount, preciseQuota), preciseQuota, msg.sender);
+            Bet(unionName, eventIndex, expectedReturn, preciseQuota, msg.sender);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -405,15 +399,15 @@ contract DeSports is KillSwitch, PreciseMath {
         if (unions[unionName].resolved  &&
             actions[msg.sender][unionName][unions[unionName].result] > 0) {
             balances[msg.sender] += actions[msg.sender][unionName][unions[unionName].result];
-            balances[msg.sender] -= preciselyMultiply(actions[msg.sender][unionName][unions[unionName].result],
+            uint fee = preciselyMultiply(actions[msg.sender][unionName][unions[unionName].result],
                                     providers[unions[unionName].provider].preciseFee);
-            balances[unions[unionName].provider] += preciselyMultiply(actions[msg.sender][unionName][unions[unionName].result],
-                                                    providers[unions[unionName].provider].preciseFee);
+            balances[msg.sender] -= fee;
+            balances[unions[unionName].provider] += fee;
             BetClaim(unionName, actions[msg.sender][unionName][unions[unionName].result], msg.sender);
             actions[msg.sender][unionName][unions[unionName].result] = 0;
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
@@ -430,7 +424,7 @@ contract DeSports is KillSwitch, PreciseMath {
             WithdrawalRequest(msg.sender, amount, ethereum);
             return true;
         } else {
-            return false;
+            revert();
         }
     }
 
